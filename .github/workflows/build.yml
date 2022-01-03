@@ -9,11 +9,12 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: arm-unknown-linux-gnueabihf
+          target: arm-unknown-linux-gnueabi
           override: true
+      - run: apt update
+      - run: apt install -y libdbus-1-dev
       - uses: actions-rs/cargo@v1
         with:
-          use-cross: true
           command: build
-          args: --target arm-unknown-linux-gnueabihf
+          args: --target arm-unknown-linux-gnueabi
       - run: ls target
