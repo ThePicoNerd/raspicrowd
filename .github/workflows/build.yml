@@ -15,8 +15,8 @@ jobs:
           target: arm-unknown-linux-gnueabi
           override: true
       - run: sudo apt update
-      - run: sudo apt install -y libc6-armhf-cross libc6-dev-armhf-cross gcc-arm-linux-gnueabi
-      - run: sudo apt install -y libdbus-1-dev:arm
+      - run: sudo apt install -y libc6-armel-cross libc6-dev-armel-cross gcc-arm-linux-gnueabihf
+      - run: sudo apt install -y libdbus-1-dev libdbus-1-dev:armel
       - uses: actions-rs/cargo@v1
         with:
           command: build
