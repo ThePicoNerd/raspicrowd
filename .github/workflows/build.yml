@@ -16,3 +16,4 @@ jobs:
           use-cross: true
           command: build
           args: --target arm-unknown-linux-gnueabihf
+      - run: ls target
