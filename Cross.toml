@@ -1,4 +1,4 @@
-[target.armv7-unknown-linux-gnueabihf]
+[target.arm-unknown-linux-gnueabi]
 image = "dbus-arm"
 
 [build.env]
