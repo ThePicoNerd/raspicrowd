@@ -1,7 +1,6 @@
 # Base image for rapsberrypi 3 target
-FROM rustembedded/cross:arm-unknown-linux-gnueabi
+FROM rustembedded/cross:arm-unknown-linux-gnueabi-0.2.1
 
-# Install libdbus libraries and pkg-config
-RUN dpkg --add-architecture armel && \
-	    apt-get update && \
-	    apt-get install --assume-yes libdbus-1-dev libdbus-1-dev:armel pkg-config
+RUN dpkg --add-architecture armel
+RUN apt update
+RUN apt install -y libdbus-1-dev pkg-config
