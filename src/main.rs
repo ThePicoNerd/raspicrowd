@@ -1,41 +1,17 @@
 //! Discover Bluetooth devices and list them.
 
-use bluer::{Adapter, AdapterEvent, Address, DeviceEvent};
-use futures::{pin_mut, stream::SelectAll, StreamExt};
-use std::{collections::HashSet, env};
+use bluer::{AdapterEvent, Address};
+use futures::{pin_mut, StreamExt};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    time::Duration,
+};
+use tokio::time;
 
-async fn query_device(adapter: &Adapter, addr: Address) -> bluer::Result<()> {
-    let device = adapter.device(addr)?;
-    println!("    Address type:       {}", device.address_type().await?);
-    println!("    Name:               {:?}", device.name().await?);
-    println!("    Icon:               {:?}", device.icon().await?);
-    println!("    Class:              {:?}", device.class().await?);
-    println!(
-        "    UUIDs:              {:?}",
-        device.uuids().await?.unwrap_or_default()
-    );
-    println!("    Paried:             {:?}", device.is_paired().await?);
-    println!("    Connected:          {:?}", device.is_connected().await?);
-    println!("    Trusted:            {:?}", device.is_trusted().await?);
-    println!("    Modalias:           {:?}", device.modalias().await?);
-    println!("    RSSI:               {:?}", device.rssi().await?);
-    println!("    TX power:           {:?}", device.tx_power().await?);
-    println!(
-        "    Manufacturer data:  {:?}",
-        device.manufacturer_data().await?
-    );
-    println!("    Service data:       {:?}", device.service_data().await?);
-    Ok(())
-}
-
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> bluer::Result<()> {
-    let with_changes = env::args().any(|arg| arg == "--changes");
-    let filter_addr: HashSet<_> = env::args()
-        .filter_map(|arg| arg.parse::<Address>().ok())
-        .collect();
-
-    env_logger::init();
+    tracing_subscriber::fmt::init();
     let session = bluer::Session::new().await?;
     let adapter_names = session.adapter_names().await?;
     let adapter_name = adapter_names.first().expect("No Bluetooth adapter present");
@@ -46,45 +22,60 @@ async fn main() -> bluer::Result<()> {
     let adapter = session.adapter(adapter_name)?;
     adapter.set_powered(true).await?;
 
-    let device_events = adapter.discover_devices().await?;
-    pin_mut!(device_events);
+    let mut device_events = adapter.discover_devices().await?;
 
-    let mut all_change_events = SelectAll::new();
+    println!("bruh");
 
-    loop {
-        tokio::select! {
-            Some(device_event) = device_events.next() => {
-                match device_event {
-                    AdapterEvent::DeviceAdded(addr) => {
-                        if !filter_addr.is_empty() && !filter_addr.contains(&addr) {
-                            continue;
-                        }
+    let mut devices = HashMap::new();
 
-                        println!("Device added: {}", addr);
-                        if let Err(err) = query_device(&adapter, addr).await {
-                            println!("    Error: {}", &err);
-                        }
-
-                        if with_changes {
-                            let device = adapter.device(addr)?;
-                            let change_events = device.events().await?.map(move |evt| (addr, evt));
-                            all_change_events.push(change_events);
-                        }
-                    }
-                    AdapterEvent::DeviceRemoved(addr) => {
-                        println!("Device removed: {}", addr);
-                    }
-                    _ => (),
+    while let Some(event) = device_events.next().await {
+        match event {
+            AdapterEvent::DeviceAdded(addr) => {
+                let device = adapter.device(addr)?;
+                if let Some(rssi) = device.rssi().await? {
+                    devices.insert(addr, rssi);
                 }
-                println!();
             }
-            Some((addr, DeviceEvent::PropertyChanged(property))) = all_change_events.next() => {
-                println!("Device changed: {}", addr);
-                println!("    {:?}", property);
+            AdapterEvent::DeviceRemoved(addr) => {
+                devices.remove(&addr);
             }
-            else => break
+            _ => {}
         }
+
+        if let Some((addr, rssi)) = devices.iter().max_by_key(|(_, rssi)| *rssi) {
+            let device = adapter.device(*addr)?;
+            println!("{}", device.alias().await?);
+        }
+
+        println!("{} devices", devices.len());
     }
+
+    // while let Some(event) = device_events.next().await {
+    //     match event {
+    //         AdapterEvent::DeviceAdded(addr) => {
+    //             devices.insert(addr, );
+    //         }
+    //         AdapterEvent::DeviceRemoved(addr) => {
+    //             devices.remove(&addr);
+    //         }
+    //         _ => {}
+    //     }
+
+    //     println!("{}", devices.len());
+    // }
+
+    // loop {
+    //     if let Some(AdapterEvent::DeviceAdded(addr)) = device_events.next().await {
+    //         if !filter_addr.is_empty() && !filter_addr.contains(&addr) {
+    //             continue;
+    //         }
+
+    //         let device = adapter.device(addr).unwrap();
+    //         let rssi = device.rssi().await.unwrap();
+
+    //         println!("{} {:?} dB", addr, rssi);
+    //     }
+    // }
 
     Ok(())
 }
