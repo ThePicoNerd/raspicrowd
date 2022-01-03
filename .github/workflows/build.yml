@@ -16,7 +16,7 @@ jobs:
       - uses: docker/build-push-action@v2
         with:
           context: .
-          tags: dbus-arm
+          tags: dbus-arm:latest
       - uses: actions-rs/cargo@v1
         with:
           use-cross: true
