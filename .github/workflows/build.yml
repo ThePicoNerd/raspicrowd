@@ -22,6 +22,6 @@ jobs:
           use-cross: true
           command: build
           args: --target arm-unknown-linux-gnueabi
-          env:
-            RUSTFLAGS: "-L /usr/arm-linux-gnueabi/lib/ -L /usr/lib/arm-linux-gnueabi/"
+        env:
+          RUSTFLAGS: "-L /usr/arm-linux-gnueabi/lib/ -L /usr/lib/arm-linux-gnueabi/"
       - run: ls target
