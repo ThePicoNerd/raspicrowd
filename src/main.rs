@@ -1,47 +1,90 @@
-use std::time::Duration;
+//! Discover Bluetooth devices and list them.
 
-use bluez::{
-    client::{AddressTypeFlag, BlueZClient},
-    interface::event::Event,
-};
+use bluer::{Adapter, AdapterEvent, Address, DeviceEvent};
+use futures::{pin_mut, stream::SelectAll, StreamExt};
+use std::{collections::HashSet, env};
 
-#[tokio::main]
-async fn main() {
-    let mut client = BlueZClient::new().unwrap();
+async fn query_device(adapter: &Adapter, addr: Address) -> bluer::Result<()> {
+    let device = adapter.device(addr)?;
+    println!("    Address type:       {}", device.address_type().await?);
+    println!("    Name:               {:?}", device.name().await?);
+    println!("    Icon:               {:?}", device.icon().await?);
+    println!("    Class:              {:?}", device.class().await?);
+    println!(
+        "    UUIDs:              {:?}",
+        device.uuids().await?.unwrap_or_default()
+    );
+    println!("    Paried:             {:?}", device.is_paired().await?);
+    println!("    Connected:          {:?}", device.is_connected().await?);
+    println!("    Trusted:            {:?}", device.is_trusted().await?);
+    println!("    Modalias:           {:?}", device.modalias().await?);
+    println!("    RSSI:               {:?}", device.rssi().await?);
+    println!("    TX power:           {:?}", device.tx_power().await?);
+    println!(
+        "    Manufacturer data:  {:?}",
+        device.manufacturer_data().await?
+    );
+    println!("    Service data:       {:?}", device.service_data().await?);
+    Ok(())
+}
 
-    let controllers = client.get_controller_list().await.unwrap();
-    let controller = controllers
-        .first()
-        .expect("no bluetooth controllers available");
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> bluer::Result<()> {
+    let with_changes = env::args().any(|arg| arg == "--changes");
+    let filter_addr: HashSet<_> = env::args()
+        .filter_map(|arg| arg.parse::<Address>().ok())
+        .collect();
 
-    client.set_handler(|controller, event| match event {
-        Event::DeviceFound {
-            address,
-            address_type,
-            flags,
-            rssi,
-            ..
-        } => {
-            println!(
-                "[{:?}] found device {} ({:?})",
-                controller, address, address_type
-            );
-            println!("\tflags: {:?}", flags);
-            println!("\trssi: {:?}", rssi);
+    env_logger::init();
+    let session = bluer::Session::new().await?;
+    let adapter_names = session.adapter_names().await?;
+    let adapter_name = adapter_names.first().expect("No Bluetooth adapter present");
+    println!(
+        "Discovering devices using Bluetooth adapater {}\n",
+        &adapter_name
+    );
+    let adapter = session.adapter(adapter_name)?;
+    adapter.set_powered(true).await?;
+
+    let device_events = adapter.discover_devices().await?;
+    pin_mut!(device_events);
+
+    let mut all_change_events = SelectAll::new();
+
+    loop {
+        tokio::select! {
+            Some(device_event) = device_events.next() => {
+                match device_event {
+                    AdapterEvent::DeviceAdded(addr) => {
+                        if !filter_addr.is_empty() && !filter_addr.contains(&addr) {
+                            continue;
+                        }
+
+                        println!("Device added: {}", addr);
+                        if let Err(err) = query_device(&adapter, addr).await {
+                            println!("    Error: {}", &err);
+                        }
+
+                        if with_changes {
+                            let device = adapter.device(addr)?;
+                            let change_events = device.events().await?.map(move |evt| (addr, evt));
+                            all_change_events.push(change_events);
+                        }
+                    }
+                    AdapterEvent::DeviceRemoved(addr) => {
+                        println!("Device removed: {}", addr);
+                    }
+                    _ => (),
+                }
+                println!();
+            }
+            Some((addr, DeviceEvent::PropertyChanged(property))) = all_change_events.next() => {
+                println!("Device changed: {}", addr);
+                println!("    {:?}", property);
+            }
+            else => break
         }
-        _ => (),
-    });
-
-    client
-        .start_discovery(
-            *controller,
-            AddressTypeFlag::BREDR | AddressTypeFlag::LEPublic | AddressTypeFlag::LERandom,
-        )
-        .await
-        .unwrap();
-
-    for _ in 0usize..5000usize {
-        client.process().await.unwrap();
-        std::thread::sleep(Duration::from_millis(50));
     }
+
+    Ok(())
 }
