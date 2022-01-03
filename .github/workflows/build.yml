@@ -4,17 +4,21 @@ jobs:
   linux_arm:
     name: Linux ARM
     runs-on: ubuntu-latest
+    env:
+      PKG_CONFIG_PATH: /usr/lib/arm-linux-gnueabi/pkgconfig
+      PKG_CONFIG_ALLOW_CROSS: "true"
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: arm-unknown-linux-musleabi
+          target: arm-unknown-linux-gnueabi
           override: true
       - run: sudo apt update
-      - run: sudo apt install -y libdbus-1-dev
+      - run: sudo apt install -y libc6-armhf-cross libc6-dev-arm-cross gcc-arm-linux-gnueabi
+      - run: sudo apt install -y libdbus-1-dev:arm
       - uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target arm-unknown-linux-musleabi
+          args: --target arm-unknown-linux-gnueabi
       - run: ls target
